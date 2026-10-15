@@ -1,0 +1,33 @@
+[project]
+name = "stubble-removal-lab"
+version = "0.2.0"
+description = "本地照片祛胡青工具：自动定位、手动选区、可视化预览与命令行"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = "MIT"
+license-files = ["LICENSE", "THIRD_PARTY.md"]
+dependencies = [
+    "numpy>=2.1,<3",
+    "opencv-contrib-python>=4.10,<5",
+    "pillow>=11,<13",
+    "torch>=2.6,<3",
+    "mediapipe>=0.10.21,<0.11",
+    "pyside6-essentials>=6.8,<7",
+]
+
+[project.scripts]
+stubble = "stubble_removal_lab.cli:main"
+stubble-gui = "stubble_removal_lab.gui:main"
+
+[build-system]
+requires = ["hatchling>=1.26,<2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/stubble_removal_lab"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/", "README.md", "LICENSE", "THIRD_PARTY.md", "pyproject.toml", "wiki/"]
+
+[tool.uv]
+package = true

@@ -1,0 +1,194 @@
+{
+  "case": "YS_02170",
+  "model": "3378116080",
+  "strength": 1,
+  "source_sha256": "b73980af29dc5567b649d7ba3cfb7752df3c6f55ef3ce856bde47f052ce263fe",
+  "crop_xyxy": [
+    2490,
+    880,
+    2780,
+    1170
+  ],
+  "display_scale": 2,
+  "panels": [
+    {
+      "title": "原图",
+      "source_file": "YS_02170.JPG",
+      "source_sha256": "b73980af29dc5567b649d7ba3cfb7752df3c6f55ef3ce856bde47f052ce263fe"
+    },
+    {
+      "title": "旧版自动定位",
+      "source_file": "result.png",
+      "source_sha256": "da5369c37c89861d709f1ff492c078b1d5f027598b7748751d7ae58df885dedc",
+      "profile": {
+        "points": [
+          [
+            2553.060260772705,
+            974.6094970703125
+          ],
+          [
+            2664.6445446014404,
+            1011.9793949127197
+          ],
+          [
+            2577.376512527466,
+            1123.1465911865234
+          ]
+        ],
+        "parsing": {
+          "crop_xyxy": [
+            2295,
+            431,
+            3161,
+            1297
+          ]
+        },
+        "mask_strategy": "model_resolution",
+        "review_crop": [
+          2471,
+          892,
+          2747,
+          1205
+        ],
+        "source_sha256": "b73980af29dc5567b649d7ba3cfb7752df3c6f55ef3ce856bde47f052ce263fe",
+        "source_size_wh": [
+          4608,
+          3072
+        ],
+        "schema_version": 1,
+        "origin": "automatic",
+        "detection": {
+          "detector": "YuNet 2023mar + MediaPipe FaceLandmarker v1",
+          "landmark_indices": [
+            61,
+            291,
+            152
+          ],
+          "proposal_score": 0.8933900594711304
+        }
+      },
+      "model": "3378116080",
+      "strength": 1.0
+    },
+    {
+      "title": "手动定位不当（构造对照）",
+      "source_file": "result.png",
+      "source_sha256": "58d51cfb64b6c8833d884d88c646b7513157ba0ba25b1c71dc8343897f34fc3e",
+      "profile": {
+        "points": [
+          [
+            2553.060260772705,
+            974.6094970703125
+          ],
+          [
+            2664.6445446014404,
+            1011.9793949127197
+          ],
+          [
+            2577.376512527466,
+            1123.1465911865234
+          ]
+        ],
+        "parsing": {
+          "output_to_source_affine": [
+            [
+              1.4757065077504234,
+              -8.10968918140733e-05,
+              2376.9859224742086
+            ],
+            [
+              8.10968918140733e-05,
+              1.4757065077504234,
+              612.843245975957
+            ]
+          ]
+        },
+        "mask_strategy": "model_resolution",
+        "review_crop": [
+          2471,
+          892,
+          2747,
+          1205
+        ],
+        "source_sha256": "b73980af29dc5567b649d7ba3cfb7752df3c6f55ef3ce856bde47f052ce263fe",
+        "source_size_wh": [
+          4608,
+          3072
+        ],
+        "schema_version": 1,
+        "origin": "diagnostic_control",
+        "detection": {
+          "detector": "YuNet 2023mar + MediaPipe FaceLandmarker v1",
+          "landmark_indices": [
+            61,
+            291,
+            152
+          ],
+          "proposal_score": 0.8933900594711304
+        }
+      },
+      "model": "3378116080",
+      "strength": 1.0
+    },
+    {
+      "title": "合理手动定位",
+      "source_file": "result.png",
+      "source_sha256": "90013d234f7acf056b8d5c3536e4469d85624c9eca83458cb27ffb4d755862db",
+      "profile": {
+        "points": [
+          [
+            2549.092477019102,
+            974.1056582147219
+          ],
+          [
+            2664.549457521519,
+            1015.9040115350293
+          ],
+          [
+            2630.542990268166,
+            1128.5280637341543
+          ]
+        ],
+        "parsing": {
+          "output_to_source_affine": [
+            [
+              1.4757065077504234,
+              -8.10968918140733e-05,
+              2376.9859224742086
+            ],
+            [
+              8.10968918140733e-05,
+              1.4757065077504234,
+              612.843245975957
+            ]
+          ]
+        },
+        "mask_strategy": "model_resolution",
+        "review_crop": [
+          2490,
+          880,
+          2780,
+          1170
+        ],
+        "source_sha256": "b73980af29dc5567b649d7ba3cfb7752df3c6f55ef3ce856bde47f052ce263fe",
+        "source_size_wh": [
+          4608,
+          3072
+        ],
+        "schema_version": 1,
+        "origin": "manual",
+        "detection": null
+      },
+      "model": "3378116080",
+      "strength": 1.0
+    }
+  ],
+  "comparison_sha256": "9811b8d301803ab2a4c0f513c8ac5c8c53c8cd8c272c243c20cb050c9c1c388f",
+  "points_illustration_sha256": "7a2a76e71524e2800adc6dcdf3828d8308fc764d4e514d7f9682665870af0867",
+  "notes": [
+    "Manual-misplaced panel is a constructed control, not an observed user misclick.",
+    "Old automatic example predates the projected-jaw-bottom correction.",
+    "Manual control and good-manual use the same parsing transform; all repair panels use C and strength1.",
+    "No extra color, brightness or retouching applied to display crops."
+  ]
+}
