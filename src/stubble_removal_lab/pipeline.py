@@ -17,7 +17,8 @@ from .engines.parsing import ParsingGraph
 from .engines.restoration import RecoveredGraph
 from .geometry import add_correction, align_image, parsing_image, restoration_transform
 from .masking import semantic_mask
-from .photos import open_photo
+from .paths import unique_path
+from .photos import open_photo, output_encoding, save_photo
 
 PALETTE = np.array([[0,0,0],[170,60,160],[240,180,140],[160,100,50],
     [30,150,250],[200,250,250],[60,80,80],[120,50,40],[240,70,130],
@@ -52,19 +53,20 @@ class Pipeline:
             raise ValueError("无效的142点模板")
 
     def process(self, source: Path, profile: Profile, output: Path, *, strength=1.0,
-                save_intermediates=False, save_diagnostics=False, progress=None) -> Path:
+                save_intermediates=False, save_diagnostics=False, progress=None,
+                output_format="same", quality=95) -> Path:
         if not np.isfinite(strength) or not 0 <= strength <= 1:
             raise ValueError("strength 必须在0到1之间；它不等同于原软件UI强度")
         source = source.expanduser().resolve(strict=True)
-        output = output.expanduser().resolve()
-        if output.exists():
-            raise FileExistsError(f"输出目录已经存在，请换一个目录：{output}")
+        output = unique_path(Path(output).expanduser().resolve())
         started = time.monotonic()
         source_hash = sha256(source)
         if profile.source_sha256 and profile.source_sha256 != source_hash:
             raise ValueError("源文件与配置的SHA-256不一致；请为这张照片单独建立配置")
         photo = open_photo(source)
-        icc = photo.info.get("icc_profile")
+        encoding, suffix = output_encoding(photo, output_format)
+        if not 1 <= quality <= 100:
+            raise ValueError("quality 必须在1到100之间")
         if profile.source_size_wh and list(photo.size) != profile.source_size_wh:
             raise ValueError("源图尺寸与配置不一致（坐标基于EXIF转正后的图像）")
         for x,y in profile.points:
@@ -76,6 +78,7 @@ class Pipeline:
         report = {"version":__version__, "status":"running", "source":str(source),
                   "source_sha256":source_hash, "model":self.model_id,
                   "strength":strength, "threads":self.threads, "profile":asdict(profile),
+                  "output_format":encoding, "quality":quality,
                   "limitations":["三点仿射对齐；自动关键点或手工标注，不等于原生142点几何。",
                     "固定选模，不运行原生预筛选。", "CV遮罩与最终合成为研究近似。",
                     "未证明原生逐像素等价，也未证明任意照片上的质量。"]}
@@ -118,9 +121,9 @@ class Pipeline:
                 raise ValueError("修复输出含非有限值")
             notify("将局部RGB修正合成回完整照片")
             full = add_correction(original,delta,transform,strength)
-            destination = output/"result.png"
-            options = {"icc_profile":icc} if icc else {}
-            Image.fromarray(full).save(destination,**options)
+            destination = output/f"result{suffix}"
+            save_photo(Image.fromarray(full),photo,destination,
+                       output_format=output_format,quality=quality)
             (output/"profile.json").write_text(json.dumps(asdict(profile),ensure_ascii=False,indent=2),encoding="utf-8")
             if save_intermediates:
                 np.savez_compressed(output/"intermediates.npz",image=image,mask=mask,

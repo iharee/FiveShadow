@@ -1,21 +1,24 @@
 """Local desktop UI. Detection/inference run in a cancellable child process."""
 from dataclasses import asdict
+import codecs
 import json
 from pathlib import Path
 import sys
 from uuid import uuid4
 
 from PIL import Image
-from PySide6.QtCore import QProcess,QStandardPaths,Qt,QTimer
+from PySide6.QtCore import QProcess,QStandardPaths,Qt,QTimer,QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QApplication,QButtonGroup,QCheckBox,QComboBox,QFileDialog,QFrame,QHBoxLayout,
-    QLabel,QMainWindow,QMessageBox,QProgressBar,QPushButton,QSlider,QSplitter,
+    QLabel,QMainWindow,QMessageBox,QProgressBar,QPushButton,QScrollArea,QSlider,QSplitter,
     QVBoxLayout,QWidget,
 )
 
 from .config import Profile
 from .gui_canvas import PhotoCanvas
-from .photos import open_photo
+from .gui_batch import BatchDialog,ExportControls,PHOTO_FILTER
+from .photos import ALIASES,FORMATS,PHOTO_FILTERS,open_photo,output_encoding,save_photo
 from .selection import make_profile,source_hash
 
 STYLE="""
@@ -51,6 +54,7 @@ class Window(QMainWindow):
         self.pending_result=None
         self.worker_error=""
         self.stdout_buffer=""
+        self.stdout_decoder=codecs.getincrementaldecoder("utf-8")(errors="replace")
         self.stderr_buffer=""
         self.cancelled=False
         self.callback=None
@@ -75,6 +79,9 @@ class Window(QMainWindow):
         self.open_button=QPushButton("打开照片")
         self.open_button.clicked.connect(self.choose_photo)
         header.addWidget(self.open_button)
+        self.batch_button=QPushButton("批量处理")
+        self.batch_button.clicked.connect(self.batch_process)
+        header.addWidget(self.batch_button)
         layout.addLayout(header)
         body=QHBoxLayout()
         layout.addLayout(body,1)
@@ -83,7 +90,7 @@ class Window(QMainWindow):
         controls.setFixedWidth(264)
         side=QVBoxLayout(controls)
         side.setContentsMargins(16,20,16,18)
-        side.setSpacing(12)
+        side.setSpacing(10)
         side.addWidget(QLabel("1  定位需要处理的脸"))
         modes=QHBoxLayout()
         self.auto_button=QPushButton("自动定位")
@@ -115,6 +122,8 @@ class Window(QMainWindow):
         self.model_combo=QComboBox()
         self.model_combo.addItem("C · 自然修复（推荐）","C")
         self.model_combo.addItem("B · 对照版本","B")
+        self.model_combo.addItem("A","A")
+        self.model_combo.addItem("D","D")
         self.model_combo.currentIndexChanged.connect(self.invalidate_result)
         side.addWidget(self.model_combo)
         self.run_button=QPushButton("生成结果")
@@ -135,7 +144,9 @@ class Window(QMainWindow):
         self.show_original=QCheckBox("右侧暂看原图")
         self.show_original.toggled.connect(self.render_result)
         side.addWidget(self.show_original)
-        self.save_button=QPushButton("另存结果 PNG")
+        self.export=ExportControls()
+        side.addWidget(self.export)
+        self.save_button=QPushButton("另存结果")
         self.save_button.clicked.connect(self.save_result)
         side.addWidget(self.save_button)
         side.addStretch()
@@ -150,7 +161,13 @@ class Window(QMainWindow):
         self.cancel_button=QPushButton("取消后台任务")
         self.cancel_button.clicked.connect(self.cancel)
         side.addWidget(self.cancel_button)
-        body.addWidget(controls)
+        scroll=QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setFixedWidth(280)
+        scroll.setWidget(controls)
+        body.addWidget(scroll)
         photos=QVBoxLayout()
         nav=QHBoxLayout()
         self.photo_name=QLabel("尚未打开照片")
@@ -184,6 +201,7 @@ class Window(QMainWindow):
         self.progress.hide()
         layout.addWidget(self.progress)
         self.status=QLabel("就绪")
+        self.status.setWordWrap(True)
         layout.addWidget(self.status)
         self.blend_timer=QTimer(self)
         self.blend_timer.setSingleShot(True)
@@ -197,6 +215,8 @@ class Window(QMainWindow):
                        self.model_combo,self.face_combo,self.repoint_button,self.inside_button]:
             button.setEnabled(not busy and (has_photo or button==self.open_button))
         self.left.setEnabled(not busy)
+        self.batch_button.setEnabled(not busy)
+        self.export.setEnabled(not busy and has_photo)
         self.run_button.setEnabled(not busy and len(self.left.points)==3 and self.left.box is not None)
         self.save_profile_button.setEnabled(not busy and len(self.left.points)==3)
         self.strength.setEnabled(not busy and self.full_result is not None)
@@ -206,7 +226,7 @@ class Window(QMainWindow):
         self.progress.setVisible(busy)
 
     def choose_photo(self):
-        filename,_=QFileDialog.getOpenFileName(self,"打开照片","","照片 (*.jpg *.jpeg *.JPG *.png *.PNG);;所有文件 (*)")
+        filename,_=QFileDialog.getOpenFileName(self,"打开照片","",PHOTO_FILTER)
         if filename:
             self.open_path(Path(filename))
 
@@ -346,20 +366,56 @@ class Window(QMainWindow):
         if self.full_result is None:
             return
         self.render_result()
-        filename,_=QFileDialog.getSaveFileName(self,"另存修复结果",str(self.source.with_name(self.source.stem+"_祛胡青.png")),"PNG照片 (*.png)")
+        requested=self.export.format.currentData()
+        try:
+            encoding,suffix=output_encoding(self.original,requested)
+        except Exception as error:
+            return self.error(str(error))
+        name=next(key for key,value in FORMATS.items() if value==encoding)
+        filename,selected=QFileDialog.getSaveFileName(self,"另存修复结果",
+            str(self.source.with_name(self.source.stem+"_祛胡青"+suffix)),
+            ";;".join(PHOTO_FILTERS.values()),PHOTO_FILTERS[name])
         if not filename:
             return
         path=Path(filename)
-        if path.suffix.lower()!=".png":
-            path=path.with_suffix(".png")
+        if not path.suffix:
+            chosen=next((key for key,value in PHOTO_FILTERS.items() if value==selected),name)
+            path=path.with_suffix("."+chosen)
         if path.resolve()==self.source:
             return self.error("请选择新的文件名，保留原图")
         try:
-            options={"icc_profile":self.original.info["icc_profile"]} if self.original.info.get("icc_profile") else {}
-            self.preview.save(path,**options)
+            chosen=ALIASES.get(path.suffix.lower()[1:],path.suffix.lower()[1:])
+            save_photo(self.preview,self.original,path,output_format=chosen,
+                       quality=self.export.quality.value())
             self.status.setText(f"已保存：{path}")
         except Exception as error:
             self.error(str(error))
+
+    def batch_process(self):
+        dialog=BatchDialog(self,model=self.model_combo.currentData(),strength=self.strength.value(),
+            output_format=self.export.format.currentData(),quality=self.export.quality.value())
+        if dialog.exec()!=BatchDialog.DialogCode.Accepted:
+            return
+        request=dialog.request()
+        request["assets"]=str(self.assets) if self.assets else None
+        self.start_task(request,self.batch_done)
+
+    def batch_done(self,payload):
+        report=payload["report"]
+        message=f"批量处理完成：成功 {report['succeeded']} 张，失败 {report['failed']} 张。"
+        self.status.setText(message+f" 保存位置：{report['output']}")
+        box=QMessageBox(self)
+        box.setWindowTitle("批量处理结果")
+        box.setText(message)
+        box.setInformativeText(f"结果已保存至：{report['output']}")
+        failures=[f"{Path(item['source']).name}：{item['error']}" for item in report["items"] if item["status"]=="failed"]
+        if failures:
+            box.setDetailedText("\n".join(failures))
+        open_button=box.addButton("打开结果目录",QMessageBox.ButtonRole.ActionRole)
+        box.addButton("关闭",QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton()==open_button:
+            QDesktopServices.openUrl(QUrl.fromLocalFile(report["output"]))
 
     def load_profile(self):
         filename,_=QFileDialog.getOpenFileName(self,"加载定位配置","","定位配置 (*.json)")
@@ -409,6 +465,7 @@ class Window(QMainWindow):
         self.pending_result=None
         self.worker_error=""
         self.stdout_buffer=""
+        self.stdout_decoder=codecs.getincrementaldecoder("utf-8")(errors="replace")
         self.stderr_buffer=""
         self.cancelled=False
         self.job=QProcess(self)
@@ -425,7 +482,7 @@ class Window(QMainWindow):
     def read_stdout(self):
         if self.job is None:
             return
-        self.stdout_buffer+=bytes(self.job.readAllStandardOutput()).decode("utf-8",errors="replace")
+        self.stdout_buffer+=self.stdout_decoder.decode(bytes(self.job.readAllStandardOutput()))
         while "\n" in self.stdout_buffer:
             line,self.stdout_buffer=self.stdout_buffer.split("\n",1)
             try:
@@ -458,7 +515,8 @@ class Window(QMainWindow):
         job.deleteLater()
         self._controls()
         if self.cancelled:
-            self.status.setText("任务已取消，可修改定位后重新生成")
+            self.status.setText("批量任务已取消，已完成的结果保留在所选目录。"
+                if self.callback==self.batch_done else "任务已取消，可修改定位后重新生成")
         elif code==0 and self.pending_result:
             try:
                 self.callback(self.pending_result)
@@ -473,7 +531,9 @@ class Window(QMainWindow):
     def cancel(self):
         if self.job:
             self.cancelled=True
-            self.job.kill()
+            job=self.job
+            job.terminate()
+            QTimer.singleShot(2000,lambda:job.kill() if self.job is job else None)
 
     def error(self,message):
         self.status.setText(message)
@@ -482,8 +542,11 @@ class Window(QMainWindow):
     def closeEvent(self,event):
         if self.job:
             self.cancelled=True
-            self.job.kill()
-            self.job.waitForFinished(2000)
+            job=self.job
+            job.terminate()
+            if not job.waitForFinished(2000):
+                job.kill()
+                job.waitForFinished(1000)
         event.accept()
 
 

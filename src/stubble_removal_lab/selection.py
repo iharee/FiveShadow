@@ -1,7 +1,5 @@
 """Shared manual/automatic face selections in original oriented pixel units."""
-from dataclasses import asdict
 import hashlib
-import json
 import math
 from pathlib import Path
 
@@ -52,10 +50,3 @@ def make_profile(source: Path, box, points, *, origin="manual", detection=None):
         "parsing":{"crop_xyxy":crop},"mask_strategy":"model_resolution", "review_crop":review,
         "source_sha256":source_hash(source),"source_size_wh":list(photo.size),
         "origin":origin,"detection":detection})
-
-
-def save_profile(profile: Profile, path: Path):
-    if path.exists():
-        raise FileExistsError(f"配置文件已存在：{path}")
-    path.parent.mkdir(parents=True,exist_ok=True)
-    path.write_text(json.dumps(asdict(profile),ensure_ascii=False,indent=2),encoding="utf-8")

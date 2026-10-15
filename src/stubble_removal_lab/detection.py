@@ -53,9 +53,9 @@ def _iou(a,b):
 
 def detect_faces(source: Path, *, box=None, model_directory=None, progress=None):
     notify=progress or (lambda message:None)
+    photo=open_photo(source)
     root=ensure_models(model_directory,notify)
     notify("正在定位人脸")
-    photo=open_photo(source)
     rgb=np.asarray(photo)
     height,width=rgb.shape[:2]
     proposals=[]
@@ -135,3 +135,14 @@ def detect_faces(source: Path, *, box=None, model_directory=None, progress=None)
     if not candidates:
         raise ValueError("没有定位到可用人脸。请选择手动模式，框住脸部并标记左右嘴角和下巴")
     return candidates
+
+
+def detect_profile(source: Path, *, box=None, face_index=0, progress=None):
+    from .config import Profile
+    candidates=detect_faces(source,box=box,progress=progress)
+    if not 0<=face_index<len(candidates):
+        raise ValueError(f"检测到{len(candidates)}张脸，face-index应为0..{len(candidates)-1}")
+    chosen=candidates[face_index]
+    if chosen.profile is None:
+        raise ValueError(chosen.message)
+    return Profile.from_dict(chosen.profile)
