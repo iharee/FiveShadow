@@ -45,7 +45,7 @@ class PhotoFormatsTest(unittest.TestCase):
         photo=open_photo(source)
         for name in ("png","tiff","webp","jpg","bmp"):
             with self.subTest(format=name):
-                destination=self.root/f"alpha.{name}"
+                destination=self.root/f"export-alpha.{name}"
                 save_photo(photo,photo,destination,output_format=name)
                 with Image.open(destination) as saved:
                     pixel=saved.convert("RGBA").getpixel((0,0))

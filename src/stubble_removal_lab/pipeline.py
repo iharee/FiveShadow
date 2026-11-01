@@ -18,7 +18,7 @@ from .engines.restoration import RecoveredGraph
 from .geometry import add_correction, align_image, parsing_image, restoration_transform
 from .masking import semantic_mask
 from .paths import unique_path
-from .photos import open_photo, output_encoding, save_photo
+from .photos import open_photo, output_encoding, photo_filename, save_photo
 
 PALETTE = np.array([[0,0,0],[170,60,160],[240,180,140],[160,100,50],
     [30,150,250],[200,250,250],[60,80,80],[120,50,40],[240,70,130],
@@ -64,7 +64,7 @@ class Pipeline:
         if profile.source_sha256 and profile.source_sha256 != source_hash:
             raise ValueError("源文件与配置的SHA-256不一致；请为这张照片单独建立配置")
         photo = open_photo(source)
-        encoding, suffix = output_encoding(photo, output_format)
+        encoding, _ = output_encoding(photo, output_format)
         if not 1 <= quality <= 100:
             raise ValueError("quality 必须在1到100之间")
         if profile.source_size_wh and list(photo.size) != profile.source_size_wh:
@@ -121,9 +121,13 @@ class Pipeline:
                 raise ValueError("修复输出含非有限值")
             notify("将局部RGB修正合成回完整照片")
             full = add_correction(original,delta,transform,strength)
-            destination = output/f"result{suffix}"
-            save_photo(Image.fromarray(full),photo,destination,
+            destination = output/photo_filename(photo,output_format)
+            metadata=save_photo(Image.fromarray(full),photo,destination,
                        output_format=output_format,quality=quality)
+            report["metadata"]=metadata
+            for key in ("adjusted","omitted","warnings"):
+                for message in metadata[key]:
+                    notify(f"元数据：{message}")
             (output/"profile.json").write_text(json.dumps(asdict(profile),ensure_ascii=False,indent=2),encoding="utf-8")
             if save_intermediates:
                 np.savez_compressed(output/"intermediates.npz",image=image,mask=mask,
@@ -136,7 +140,7 @@ class Pipeline:
                 f"recovered_weights/{self.model_id}.float.npz",
                 "parsing_models/dunnite_networks.json", "parsing_models/2102828093.decoded.bin"]
             report.update(status="complete",seconds=time.monotonic()-started,
-                output=str(destination),output_sha256=sha256(destination),size_wh=list(photo.size),
+                output=str(destination),output_sha256=metadata["sha256"],size_wh=list(photo.size),
                 source_to_roi=transform.tolist(),parse_to_source=parse_to_source.tolist(),
                 mask_mean=float(mask.mean()),delta_abs_mean=float(np.abs(delta).mean()),
                 asset_sha256={name:sha256(self.root/name) for name in asset_files})

@@ -42,6 +42,8 @@ def build_parser():
                 epilog+=("\n全自动：不传定位参数；框内自动：只传--box；手动：--box加--points。"
                          "\n--profile与--box/--points互斥；手动或profile模式忽略--face-index。"
                          "\nstdout为结果路径；输出目录保留profile.json和manifest.json。")
+        if name!="detect":
+            epilog+="\n默认保留原文件名（转换格式时调整扩展名）；尽量保留元数据与文件属性。调整/丢失信息记录在manifest.json及batch.json。"
         command=commands.add_parser(name,help=help_text,description=description,
                                    epilog=epilog,formatter_class=HelpFormatter)
         if name=="batch":

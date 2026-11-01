@@ -71,6 +71,8 @@ def process_batch(inputs, output: Path, *, recursive=False, model="C", assets=No
                     save_intermediates=debug,save_diagnostics=debug,
                     progress=lambda message:notify(f"{label} · {message}"))
                 item.update(status="complete",output=str(result))
+                manifest=json.loads((result.parent/"manifest.json").read_text(encoding="utf-8"))
+                item["metadata"]=manifest["metadata"]
                 report["succeeded"]+=1
                 notify(f"{label} · 已完成")
             except Exception as error:

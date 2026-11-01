@@ -18,7 +18,9 @@ from PySide6.QtWidgets import (
 from .config import Profile
 from .gui_canvas import PhotoCanvas
 from .gui_batch import BatchDialog,ExportControls,PHOTO_FILTER
-from .photos import ALIASES,FORMATS,PHOTO_FILTERS,open_photo,output_encoding,save_photo
+from .metadata import report_details
+from .paths import unique_path
+from .photos import ALIASES,FORMATS,PHOTO_FILTERS,open_photo,output_encoding,photo_filename,save_photo
 from .selection import make_profile,source_hash
 
 STYLE="""
@@ -48,6 +50,7 @@ class Window(QMainWindow):
         self.full_result=None
         self.preview=None
         self.profile=None
+        self.last_export_report=None
         self.faces=[]
         self.job=None
         self.result_path=None
@@ -202,7 +205,13 @@ class Window(QMainWindow):
         layout.addWidget(self.progress)
         self.status=QLabel("就绪")
         self.status.setWordWrap(True)
-        layout.addWidget(self.status)
+        footer=QHBoxLayout()
+        footer.addWidget(self.status,1)
+        self.metadata_button=QPushButton("保存信息详情")
+        self.metadata_button.clicked.connect(self.show_export_report)
+        self.metadata_button.hide()
+        footer.addWidget(self.metadata_button)
+        layout.addLayout(footer)
         self.blend_timer=QTimer(self)
         self.blend_timer.setSingleShot(True)
         self.blend_timer.setInterval(100)
@@ -368,13 +377,32 @@ class Window(QMainWindow):
         self.render_result()
         requested=self.export.format.currentData()
         try:
-            encoding,suffix=output_encoding(self.original,requested)
+            encoding,_=output_encoding(self.original,requested)
         except Exception as error:
             return self.error(str(error))
         name=next(key for key,value in FORMATS.items() if value==encoding)
+        directory=self.source.parent/"祛胡青结果"
+        if (directory/photo_filename(self.original,requested)).exists():
+            directory=unique_path(directory)
+        created=not directory.exists()
+        try:
+            directory.mkdir(parents=True,exist_ok=True)
+        except OSError:
+            pictures=QStandardPaths.writableLocation(QStandardPaths.StandardLocation.PicturesLocation)
+            directory=unique_path(Path(pictures or Path.home())/"FiveShadow"/self.source.stem)
+            created=True
+            try:
+                directory.mkdir(parents=True)
+            except OSError as error:
+                return self.error(str(error))
         filename,selected=QFileDialog.getSaveFileName(self,"另存修复结果",
-            str(self.source.with_name(self.source.stem+"_祛胡青"+suffix)),
+            str(directory/photo_filename(self.original,requested)),
             ";;".join(PHOTO_FILTERS.values()),PHOTO_FILTERS[name])
+        if created and (not filename or Path(filename).parent.resolve()!=directory.resolve()):
+            try:
+                directory.rmdir()
+            except OSError:
+                pass
         if not filename:
             return
         path=Path(filename)
@@ -385,11 +413,24 @@ class Window(QMainWindow):
             return self.error("请选择新的文件名，保留原图")
         try:
             chosen=ALIASES.get(path.suffix.lower()[1:],path.suffix.lower()[1:])
-            save_photo(self.preview,self.original,path,output_format=chosen,
+            report=save_photo(self.preview,self.original,path,output_format=chosen,
                        quality=self.export.quality.value())
-            self.status.setText(f"已保存：{path}")
+            self.last_export_report=report
+            self.metadata_button.show()
+            self.status.setText(f"已保存：{path}；信息调整 {len(report['adjusted'])} 项，"
+                f"未保留 {len(report['omitted'])} 项，复制异常 {len(report['warnings'])} 项。")
+            self.status.setToolTip(report_details(report))
         except Exception as error:
             self.error(str(error))
+
+    def show_export_report(self):
+        if self.last_export_report is None:
+            return
+        box=QMessageBox(self)
+        box.setWindowTitle("保存信息详情")
+        box.setText("照片元数据及文件属性的保留情况")
+        box.setDetailedText(report_details(self.last_export_report))
+        box.exec()
 
     def batch_process(self):
         dialog=BatchDialog(self,model=self.model_combo.currentData(),strength=self.strength.value(),
@@ -408,9 +449,13 @@ class Window(QMainWindow):
         box.setWindowTitle("批量处理结果")
         box.setText(message)
         box.setInformativeText(f"结果已保存至：{report['output']}")
-        failures=[f"{Path(item['source']).name}：{item['error']}" for item in report["items"] if item["status"]=="failed"]
-        if failures:
-            box.setDetailedText("\n".join(failures))
+        details=[f"{Path(item['source']).name}：{item['error']}" for item in report["items"] if item["status"]=="failed"]
+        for item in report["items"]:
+            metadata=item.get("metadata",{})
+            if metadata:
+                details.append(Path(item['source']).name+"：\n"+report_details(metadata))
+        if details:
+            box.setDetailedText("\n\n".join(details))
         open_button=box.addButton("打开结果目录",QMessageBox.ButtonRole.ActionRole)
         box.addButton("关闭",QMessageBox.ButtonRole.RejectRole)
         box.exec()

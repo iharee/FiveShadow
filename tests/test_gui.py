@@ -77,3 +77,36 @@ class DesktopPhotosTest(unittest.TestCase):
         finally:
             window.job=None
             window.close()
+
+    def test_export_defaults_to_original_name_in_separate_directory_and_reports_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory).resolve()
+            source=root/"原照片.JPEG"
+            xmp=b'<x:xmpmeta xmlns:x="adobe:ns:meta/"/>'
+            Image.new("RGB",(32,24),(30,60,90)).save(source,format="JPEG",xmp=xmp)
+            original=source.read_bytes()
+            window=Window()
+            chosen=[]
+            def choose(parent,title,suggested,*args):
+                path=Path(suggested)
+                self.assertEqual(path.name,source.name)
+                self.assertNotEqual(path.parent,source.parent)
+                chosen.append(path)
+                return str(path),PHOTO_FILTERS["jpg"]
+            try:
+                window.source=source
+                window.original=open_photo(source)
+                window.full_result=window.original.copy()
+                with patch("stubble_removal_lab.gui.QFileDialog.getSaveFileName",side_effect=choose), \
+                     patch.object(window,"error",side_effect=AssertionError):
+                    window.save_result()
+                    window.save_result()
+                self.assertNotEqual(chosen[0].parent,chosen[1].parent)
+                for path in chosen:
+                    with Image.open(path) as saved:
+                        self.assertEqual(saved.info["xmp"],xmp)
+                self.assertIn("原文件名",window.last_export_report["preserved"])
+                self.assertFalse(window.metadata_button.isHidden())
+                self.assertEqual(source.read_bytes(),original)
+            finally:
+                window.close()

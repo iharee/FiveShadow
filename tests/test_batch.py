@@ -8,7 +8,7 @@ from PIL import Image
 
 from stubble_removal_lab.batch import collect_photos, process_batch
 from stubble_removal_lab.cli import main
-from stubble_removal_lab.photos import open_photo, output_encoding, save_photo
+from stubble_removal_lab.photos import open_photo, photo_filename, save_photo
 
 
 class EncodingPipeline:
@@ -16,10 +16,10 @@ class EncodingPipeline:
 
     def process(self,source,profile,output,**options):
         photo=open_photo(source)
-        _,suffix=output_encoding(photo,options["output_format"])
         output.mkdir()
-        result=output/f"result{suffix}"
-        save_photo(photo,photo,result,output_format=options["output_format"])
+        result=output/photo_filename(photo,options["output_format"])
+        metadata=save_photo(photo,photo,result,output_format=options["output_format"])
+        (output/"manifest.json").write_text(json.dumps({"metadata":metadata}))
         return result
 
 
@@ -58,6 +58,8 @@ class BatchTest(unittest.TestCase):
         self.assertEqual([item["status"] for item in report["items"]],["complete","failed","complete"])
         self.assertNotEqual(report["items"][0]["output"],report["items"][2]["output"])
         for item in (report["items"][0],report["items"][2]):
+            self.assertEqual(Path(item["output"]).name,"same.webp")
+            self.assertIn("metadata",item)
             with Image.open(item["output"]) as result:
                 self.assertEqual(result.format,"WEBP")
         self.assertEqual(json.loads((self.root/"output/batch.json").read_text()),report)
